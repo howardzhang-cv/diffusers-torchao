@@ -5,7 +5,7 @@ Reference: [https://gist.github.com/zou3519/2f9b97add3eac216ad795397cd942a7c](ht
 ***TL;DR***: We can compile a PyTorch model ahead-of-time (AoT) and obtain faster inference latency than just-in-time (JiT) compilation. The numbers below are for the DiT of Flux.1 Dev: 
 
 ```bash
-JiT compilation: 1.776 seconds
+JiT compilation: 0.396 seconds
 AoT compilation: 0.421 seconds
 ```
 
@@ -88,7 +88,7 @@ for _ in range(5):
 model = torch.compile(model, mode="max-autotune")
 
 time = benchmark_fn(f, model, **inputs)
-print(time) # 1.776 seconds on A100.
+print(time) # 0.396 seconds on A100.
 ```
 
 </details>    
