@@ -10,17 +10,7 @@ from torchao.quantization import quantize_, autoquant
 import argparse
 import json
 
-<<<<<<< HEAD
-from utils import (
-    cleanup_tmp_directory,
-    benchmark_fn,
-    pretty_print_results,
-    reset_memory,
-    bytes_to_giga_bytes,
-)
-=======
 from utils import cleanup_tmp_directory, benchmark_fn, pretty_print_results, reset_memory, bytes_to_giga_bytes
->>>>>>> 0454a5c (Added torchao version guards for floatx)
 from packaging import version
 import importlib
 
@@ -43,9 +33,7 @@ def load_pipeline(
     sparsify: bool,
     compile_vae: bool = False,
 ) -> DiffusionPipeline:
-    pipeline = DiffusionPipeline.from_pretrained(
-        ckpt_id, torch_dtype=torch.bfloat16
-    ).to("cuda")
+    pipeline = DiffusionPipeline.from_pretrained(ckpt_id, torch_dtype=torch.bfloat16).to("cuda")
 
     if fuse_attn_projections:
         pipeline.transformer.fuse_qkv_projections()
@@ -54,14 +42,10 @@ def load_pipeline(
 
     if quantization == "autoquant" and compile:
         pipeline.transformer.to(memory_format=torch.channels_last)
-        pipeline.transformer = torch.compile(
-            pipeline.transformer, mode="max-autotune", fullgraph=True
-        )
+        pipeline.transformer = torch.compile(pipeline.transformer, mode="max-autotune", fullgraph=True)
         if compile_vae:
             pipeline.vae.to(memory_format=torch.channels_last)
-            pipeline.vae.decode = torch.compile(
-                pipeline.vae.decode, mode="max-autotune", fullgraph=True
-            )
+            pipeline.vae.decode = torch.compile(pipeline.vae.decode, mode="max-autotune", fullgraph=True)
 
     if not sparsify:
         if quantization == "int8dq":
@@ -131,19 +115,11 @@ def load_pipeline(
             from torchao.quantization import float8_dynamic_activation_float8_weight
             from torchao.quantization.quant_api import PerRow
 
-            quantize_(
-                pipeline.transformer,
-                float8_dynamic_activation_float8_weight(granularity=PerRow()),
-            )
+            quantize_(pipeline.transformer, float8_dynamic_activation_float8_weight(granularity=PerRow()))
             if compile_vae:
-                quantize_(
-                    pipeline.vae,
-                    float8_dynamic_activation_float8_weight(granularity=PerRow()),
-                )
+                quantize_(pipeline.vae, float8_dynamic_activation_float8_weight(granularity=PerRow()))
         elif quantization == "autoquant":
-            pipeline.transformer = autoquant(
-                pipeline.transformer, error_on_unseen=False
-            )
+            pipeline.transformer = autoquant(pipeline.transformer, error_on_unseen=False)
             if compile_vae:
                 pipeline.vae = autoquant(pipeline.vae, error_on_unseen=False)
 
@@ -152,26 +128,16 @@ def load_pipeline(
         from torchao.dtypes import SemiSparseLayout
         from torchao.quantization import int8_dynamic_activation_int8_weight
 
-        sparsify_(
-            pipeline.transformer,
-            int8_dynamic_activation_int8_weight(layout=SemiSparseLayout()),
-        )
+        sparsify_(pipeline.transformer, int8_dynamic_activation_int8_weight(layout=SemiSparseLayout()))
         if compile_vae:
-            sparsify_(
-                pipeline.vae,
-                int8_dynamic_activation_int8_weight(layout=SemiSparseLayout()),
-            )
+            sparsify_(pipeline.vae, int8_dynamic_activation_int8_weight(layout=SemiSparseLayout()))
 
     if quantization != "autoquant" and compile:
         pipeline.transformer.to(memory_format=torch.channels_last)
-        pipeline.transformer = torch.compile(
-            pipeline.transformer, mode="max-autotune", fullgraph=True
-        )
+        pipeline.transformer = torch.compile(pipeline.transformer, mode="max-autotune", fullgraph=True)
         if compile_vae:
             pipeline.vae.to(memory_format=torch.channels_last)
-            pipeline.vae.decode = torch.compile(
-                pipeline.vae.decode, mode="max-autotune", fullgraph=True
-            )
+            pipeline.vae.decode = torch.compile(pipeline.vae.decode, mode="max-autotune", fullgraph=True)
 
     pipeline.set_progress_bar_config(disable=True)
     return pipeline
@@ -240,16 +206,8 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether or not to fuse the QKV projection layers into one larger layer.",
     )
-    parser.add_argument(
-        "--compile",
-        action="store_true",
-        help="Whether or not to torch.compile the models.",
-    )
-    parser.add_argument(
-        "--compile_vae",
-        action="store_true",
-        help="If compiling, should VAE be compiled too?",
-    )
+    parser.add_argument("--compile", action="store_true", help="Whether or not to torch.compile the models.")
+    parser.add_argument("--compile_vae", action="store_true", help="If compiling, should VAE be compiled too?")
     parser.add_argument(
         "--quantization",
         default="None",
