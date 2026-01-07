@@ -16,14 +16,25 @@ from torchao.quantization import (
     int4_weight_only,
     float8_dynamic_activation_float8_weight,
     float8_weight_only,
-    fpx_weight_only,
 )
 from torchao.quantization.quant_api import PerRow
 from torchao.sparsity import sparsify_
 from torchao.dtypes import SemiSparseLayout
 
 
-from utils import cleanup_tmp_directory, benchmark_fn, pretty_print_results, print_memory, reset_memory
+from utils import (
+    cleanup_tmp_directory,
+    benchmark_fn,
+    pretty_print_results,
+    print_memory,
+    reset_memory,
+)
+from packaging import version
+import importlib
+
+TORCHAO_VERSION = version.parse(importlib.metadata.version("torchao"))
+if TORCHAO_VERSION <= version.parse("0.14.1"):
+    from torchao.quantization import fpx_weight_only
 
 # Set high precision for float32 matrix multiplications.
 # This setting optimizes performance on NVIDIA GPUs with Ampere architecture (e.g., A100, RTX 30 series) or newer.
@@ -34,24 +45,39 @@ CONVERT_DTYPE = {
     "fp16": lambda module: module.to(dtype=torch.float16),
     "bf16": lambda module: module.to(dtype=torch.bfloat16),
     "fp8wo": lambda module: quantize_(module, float8_weight_only()),
-    "fp8dq": lambda module: quantize_(module, float8_dynamic_activation_float8_weight()),
-    "fp8dqrow": lambda module: quantize_(module, float8_dynamic_activation_float8_weight(granularity=PerRow())),
-    "fp6_e3m2": lambda module: quantize_(module, fpx_weight_only(3, 2)),
-    "fp5_e2m2": lambda module: quantize_(module, fpx_weight_only(2, 2)),
-    "fp4_e2m1": lambda module: quantize_(module, fpx_weight_only(2, 1)),
+    "fp8dq": lambda module: quantize_(
+        module, float8_dynamic_activation_float8_weight()
+    ),
+    "fp8dqrow": lambda module: quantize_(
+        module, float8_dynamic_activation_float8_weight(granularity=PerRow())
+    ),
     "int8wo": lambda module: quantize_(module, int8_weight_only()),
     "int8dq": lambda module: quantize_(module, int8_dynamic_activation_int8_weight()),
     "int4dq": lambda module: quantize_(module, int8_dynamic_activation_int4_weight()),
     "int4wo": lambda module: quantize_(module, int4_weight_only()),
     "autoquant": lambda module: autoquant(module, error_on_unseen=False),
-    "sparsify": lambda module: sparsify_(module, int8_dynamic_activation_int8_weight(layout=SemiSparseLayout())),
+    "sparsify": lambda module: sparsify_(
+        module, int8_dynamic_activation_int8_weight(layout=SemiSparseLayout())
+    ),
 }
+if TORCHAO_VERSION <= version.parse("0.14.1"):
+    CONVERT_DTYPE.update(
+        {
+            "fp6_e3m2": lambda module: quantize_(module, fpx_weight_only(3, 2)),
+            "fp5_e2m2": lambda module: quantize_(module, fpx_weight_only(2, 2)),
+            "fp4_e2m1": lambda module: quantize_(module, fpx_weight_only(2, 1)),
+        }
+    )
 
 
 def load_pipeline(model_id, dtype, device, quantize_vae, compile, fuse_qkv):
     # 1. Load pipeline
-    pipe = CogVideoXPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16).to(device)
-    pipe.scheduler = CogVideoXDDIMScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
+    pipe = CogVideoXPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16).to(
+        device
+    )
+    pipe.scheduler = CogVideoXDDIMScheduler.from_config(
+        pipe.scheduler.config, timestep_spacing="trailing"
+    )
     pipe.set_progress_bar_config(disable=True)
 
     if fuse_qkv:
@@ -60,7 +86,9 @@ def load_pipeline(model_id, dtype, device, quantize_vae, compile, fuse_qkv):
     # 2. Quantize and compile
     if dtype == "autoquant" and compile:
         pipe.transformer.to(memory_format=torch.channels_last)
-        pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgraph=True)
+        pipe.transformer = torch.compile(
+            pipe.transformer, mode="max-autotune", fullgraph=True
+        )
         # VAE cannot be compiled due to: https://gist.github.com/a-r-r-o-w/5183d75e452a368fd17448fcc810bd3f#file-test_cogvideox_torch_compile-py-L30
 
     text_encoder_return = CONVERT_DTYPE[dtype](pipe.text_encoder)
@@ -78,7 +106,9 @@ def load_pipeline(model_id, dtype, device, quantize_vae, compile, fuse_qkv):
 
     if dtype != "autoquant" and compile:
         pipe.transformer.to(memory_format=torch.channels_last)
-        pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgraph=True)
+        pipe.transformer = torch.compile(
+            pipe.transformer, mode="max-autotune", fullgraph=True
+        )
         # VAE cannot be compiled due to: https://gist.github.com/a-r-r-o-w/5183d75e452a368fd17448fcc810bd3f#file-test_cogvideox_torch_compile-py-L30
 
     return pipe
@@ -101,12 +131,23 @@ def run_inference(pipe):
         guidance_scale=guidance_scale,
         use_dynamic_cfg=True,
         num_inference_steps=num_inference_steps,
-        generator=torch.Generator().manual_seed(3047),  # https://arxiv.org/abs/2109.08203
+        generator=torch.Generator().manual_seed(
+            3047
+        ),  # https://arxiv.org/abs/2109.08203
     )
     return video
 
 
 def main(model_id, dtype, device, quantize_vae, compile, fuse_qkv):
+    if TORCHAO_VERSION > version.parse("0.14.1") and dtype in [
+        "fp6_e3m2",
+        "fp5_e2m2",
+        "fp4_e2m1",
+    ]:
+        raise ValueError(
+            "Floating point X-bit quantization is not supported in torchao > 0.14.1"
+        )
+
     reset_memory(device)
 
     # 1. Load pipeline
@@ -184,7 +225,9 @@ def get_args():
         ],
         help="Inference or Quantization type.",
     )
-    parser.add_argument("--device", type=str, default="cuda", help="Device to run inference on.")
+    parser.add_argument(
+        "--device", type=str, default="cuda", help="Device to run inference on."
+    )
     parser.add_argument(
         "--quantize_vae",
         action="store_true",
@@ -209,5 +252,12 @@ def get_args():
 if __name__ == "__main__":
     args = get_args()
 
-    main(args.model_id, args.dtype, args.device, args.quantize_vae, args.compile, args.fuse_qkv)
+    main(
+        args.model_id,
+        args.dtype,
+        args.device,
+        args.quantize_vae,
+        args.compile,
+        args.fuse_qkv,
+    )
     cleanup_tmp_directory()
