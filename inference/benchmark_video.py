@@ -22,13 +22,7 @@ from torchao.sparsity import sparsify_
 from torchao.dtypes import SemiSparseLayout
 
 
-from utils import (
-    cleanup_tmp_directory,
-    benchmark_fn,
-    pretty_print_results,
-    print_memory,
-    reset_memory,
-)
+from utils import cleanup_tmp_directory, benchmark_fn, pretty_print_results, print_memory, reset_memory
 from packaging import version
 import importlib
 
@@ -45,12 +39,8 @@ CONVERT_DTYPE = {
     "fp16": lambda module: module.to(dtype=torch.float16),
     "bf16": lambda module: module.to(dtype=torch.bfloat16),
     "fp8wo": lambda module: quantize_(module, float8_weight_only()),
-    "fp8dq": lambda module: quantize_(
-        module, float8_dynamic_activation_float8_weight()
-    ),
-    "fp8dqrow": lambda module: quantize_(
-        module, float8_dynamic_activation_float8_weight(granularity=PerRow())
-    ),
+    "fp8dq": lambda module: quantize_(module, float8_dynamic_activation_float8_weight()),
+    "fp8dqrow": lambda module: quantize_(module, float8_dynamic_activation_float8_weight(granularity=PerRow())),
     "int8wo": lambda module: quantize_(module, int8_weight_only()),
     "int8dq": lambda module: quantize_(module, int8_dynamic_activation_int8_weight()),
     "int4dq": lambda module: quantize_(module, int8_dynamic_activation_int4_weight()),
@@ -60,6 +50,14 @@ CONVERT_DTYPE = {
         module, int8_dynamic_activation_int8_weight(layout=SemiSparseLayout())
     ),
 }
+if TORCHAO_VERSION <= version.parse("0.14.1"):
+    CONVERT_DTYPE.update(
+        {
+            "fp6_e3m2": lambda module: quantize_(module, fpx_weight_only(3, 2)),
+            "fp5_e2m2": lambda module: quantize_(module, fpx_weight_only(2, 2)),
+            "fp4_e2m1": lambda module: quantize_(module, fpx_weight_only(2, 1)),
+        }
+    )
 if TORCHAO_VERSION <= version.parse("0.14.1"):
     CONVERT_DTYPE.update(
         {
@@ -131,14 +129,21 @@ def run_inference(pipe):
         guidance_scale=guidance_scale,
         use_dynamic_cfg=True,
         num_inference_steps=num_inference_steps,
-        generator=torch.Generator().manual_seed(
-            3047
-        ),  # https://arxiv.org/abs/2109.08203
+        generator=torch.Generator().manual_seed(3047),  # https://arxiv.org/abs/2109.08203
     )
     return video
 
 
 def main(model_id, dtype, device, quantize_vae, compile, fuse_qkv):
+    if TORCHAO_VERSION > version.parse("0.14.1") and dtype in [
+        "fp6_e3m2",
+        "fp5_e2m2",
+        "fp4_e2m1",
+    ]:
+        raise ValueError(
+            "Floating point X-bit quantization is not supported in torchao > 0.14.1"
+        )
+
     if TORCHAO_VERSION > version.parse("0.14.1") and dtype in [
         "fp6_e3m2",
         "fp5_e2m2",
