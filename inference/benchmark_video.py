@@ -56,14 +56,6 @@ if TORCHAO_VERSION <= version.parse("0.14.1"):
             "fp4_e2m1": lambda module: quantize_(module, fpx_weight_only(2, 1)),
         }
     )
-if TORCHAO_VERSION <= version.parse("0.14.1"):
-    CONVERT_DTYPE.update(
-        {
-            "fp6_e3m2": lambda module: quantize_(module, fpx_weight_only(3, 2)),
-            "fp5_e2m2": lambda module: quantize_(module, fpx_weight_only(2, 2)),
-            "fp4_e2m1": lambda module: quantize_(module, fpx_weight_only(2, 1)),
-        }
-    )
 
 
 def load_pipeline(model_id, dtype, device, quantize_vae, compile, fuse_qkv):
@@ -133,16 +125,6 @@ def main(model_id, dtype, device, quantize_vae, compile, fuse_qkv):
         raise ValueError(
             "Floating point X-bit quantization is not supported in torchao > 0.14.1"
         )
-
-    if TORCHAO_VERSION > version.parse("0.14.1") and dtype in [
-        "fp6_e3m2",
-        "fp5_e2m2",
-        "fp4_e2m1",
-    ]:
-        raise ValueError(
-            "Floating point X-bit quantization is not supported in torchao > 0.14.1"
-        )
-
     reset_memory(device)
 
     # 1. Load pipeline
